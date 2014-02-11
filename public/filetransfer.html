@@ -1,0 +1,133 @@
+<!doctype html>
+<html>
+  <head>
+    <script src="http://code.jquery.com/jquery-2.1.0.js"></script>
+    <script src="http://cdn.peerjs.com/0.3/peer.js"></script>
+  </head>
+  <body>
+    <div class="connect">
+      <form>
+        Your ID : <span id="myid"></span><br>
+        Peer ID : <input id="peerid" type="number">
+        <button type="submit">connect</button>
+      </form>
+    </div>
+
+    <div class="transfer">
+      <form>
+        <input type="file" id="file">
+        <button type="submit">send</button>
+      </form>
+    </div>
+
+    <div class="receive">
+      receive:
+      <ul></ul>
+    </div>
+  </body>
+  <script>
+    "use strict";
+
+    // globally disable sctp
+    // util.supports.sctp = false;
+
+    // make id
+    $("div.transfer,.receive").hide();
+    var myid = Math.random() * 1000 | 0;
+    $("#myid").text(myid);
+
+
+    //////////////////////////////////////
+    // Define Transfer Object.
+    var Transfer = function(){
+      this.setupPeerJS();
+      this.conn = null;
+    }
+
+    Transfer.prototype.setupPeerJS = function(){
+      // connect to peerjs server
+      this.peer = new Peer(myid, {
+        'host': location.host.split(":")[0],
+        'key': 'peerjs',
+        'port': 9000,
+        'debug': 3
+      });
+      this.peer.on("open", function() {
+        console.log("connected to PeerJS server");
+        this.peer.on("connection", function(conn) {
+          this.conn = conn;
+
+          this.setListener();
+        }.bind(this));
+      }.bind(this));
+    };
+
+    Transfer.prototype.connectPeer = function(peerid) {
+      if(this.conn !== null) {
+        throw("The conncetion has been established.");
+      }
+      var t_conn = this.peer.connect(peerid); //{"reliable": true});
+      t_conn.on("open", function(){
+        this.conn = t_conn;
+
+        this.setListener();
+      }.bind(this));
+    };
+
+    Transfer.prototype.setListener = function() {
+      if(this.conn === null) {
+        throw("Connection haven't established yet");
+      }
+
+      this.conn.on("data", function(data) {
+        $(window).trigger("t_data", data);
+      });
+
+      $(window).trigger("connected");
+    };
+
+    Transfer.prototype.send = function(data) {
+      if(this.conn == null) {
+        throw("Connection haven't established yet");
+      }
+
+      this.conn.send(data);
+    };
+
+
+    ///////////////////////////////////
+    // Event Handler for JQ nodes
+    var transfer = new Transfer();
+
+    $("div.connect form").on("submit", function(ev){
+      ev.preventDefault();
+      var peerid = $("#peerid").val();
+      transfer.connectPeer(peerid);
+    });
+
+    $(window).on("connected", function(ev){
+      $("div.connect").hide();
+      $("div.transfer,.receive").fadeIn();
+    });
+
+    $(".transfer form").on("submit", function(ev) {
+      ev.preventDefault();
+
+      var filelist = $("#file")[0].files
+      console.log(filelist);
+      if(filelist.length > 0) {
+        var file = filelist[0];
+        console.log(file);
+
+        transfer.send(file);
+      }
+    });
+
+    $(window).on("t_data", function(ev, data){
+      console.log(data);
+      var url = window.URL.createObjectURL(new Blob([data]));
+      $("<li>").append($("<a>").attr("href", url).text("received file")).appendTo($(".receive > ul"));
+    });
+  </script>
+</html>
+
